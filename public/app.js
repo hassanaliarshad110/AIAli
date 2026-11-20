@@ -366,7 +366,7 @@ function renderConnector(st) {
     ${st.connector.local ? `<div class="notice">Claude.ai and ChatGPT need an HTTPS address they can reach. Deploy this app, or run a tunnel (for example <code>cloudflared tunnel --url ${esc(location.origin)}</code>) and set <code>PUBLIC_URL</code> in .env. For Claude Desktop or Claude Code, the local option below works without any of that.</div>` : ''}
     <div class="steps-box"><b>Claude (claude.ai or desktop)</b><ol><li>Settings → Connectors → Add custom connector.</li><li>Paste the connector URL. No sign-in is needed: the secret is in the URL.</li></ol></div>
     <div class="steps-box"><b>ChatGPT</b><ol><li>Turn on Developer mode (Settings → Apps &amp; Connectors → Advanced settings).</li><li>Create a custom connector, paste the URL, authentication: none.</li></ol></div>
-    <div class="steps-box"><b>Claude Desktop or Claude Code, fully local</b> (no URL, runs on this computer)<pre class="code">${esc(JSON.stringify({ mcpServers: { 'ai-ali': { command: 'node', args: ['/full/path/to/ai-ali/src/mcp-stdio.js'] } } }, null, 2))}</pre>Claude Code: <code>claude mcp add ai-ali -- node /full/path/to/ai-ali/src/mcp-stdio.js</code></div>
+    <div class="steps-box"><b>Claude Desktop or Claude Code, fully local</b> (no URL, runs on this computer)<pre class="code">${esc(JSON.stringify({ mcpServers: { 'ai-ali': { command: 'node', args: ['/full/path/to/AIAli/src/mcp-stdio.js'] } } }, null, 2))}</pre>Claude Code: <code>claude mcp add ai-ali -- node /full/path/to/AIAli/src/mcp-stdio.js</code></div>
     <p class="muted" style="margin:0">Tools: ${st.connector.tools.map((t) => `<code>${t}</code>`).join(' ')}</p>`;
 }
 document.addEventListener('click', async (e) => {

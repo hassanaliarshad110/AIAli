@@ -32,8 +32,8 @@ By **Hassan Ali**. MIT licence. No dependencies: Node.js 20+ and nothing else.
 ## Quick start
 
 ```bash
-git clone https://github.com/hassanaliarshad110/ai-ali.git
-cd ai-ali
+git clone https://github.com/hassanaliarshad110/AIAli.git
+cd AIAli
 npm start
 ```
 
@@ -105,9 +105,9 @@ Each method needs something different:
   3. Add the connector URL from Settings (`…/mcp/<secret>`) as a custom connector. Authentication: none, because the secret is in the URL.
 - **Claude Desktop:** this runs fully on your computer. Add it to `claude_desktop_config.json`:
   ```json
-  { "mcpServers": { "ai-ali": { "command": "node", "args": ["/full/path/to/ai-ali/src/mcp-stdio.js"] } } }
+  { "mcpServers": { "ai-ali": { "command": "node", "args": ["/full/path/to/AIAli/src/mcp-stdio.js"] } } }
   ```
-- **Claude Code:** run `claude mcp add ai-ali -- node /full/path/to/ai-ali/src/mcp-stdio.js`.
+- **Claude Code:** run `claude mcp add ai-ali -- node /full/path/to/AIAli/src/mcp-stdio.js`.
 
 Tools: `ap_summary`, `list_bills`, `search_vendors`, `list_accounts`, `list_purchase_orders`, `check_invoice`, `propose_bill`, `approval_queue`. A further tool, `approve_and_post`, appears only if you switch on *Let connected AI apps post bills themselves*. It is off by default.
 
