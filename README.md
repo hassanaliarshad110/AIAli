@@ -1,9 +1,9 @@
 # AI Ali
 
-**AI Ali is an open-source AI accounts payable agent you run yourself.** Connect your own APIs, and invoices flow in on their own:
+**AI Ali is an open-source AI accounts payable agent you run yourself, on Windows with a one-click installer.** Connect your own APIs, and invoices flow in on their own:
 
 - Your Claude or OpenAI key does the AI work.
-- QuickBooks Online or Xero is where the bills get posted.
+- QuickBooks Online, Xero or Zoho Books is where the bills get posted.
 - Your Gmail or Outlook AP mailbox, or a folder on your computer, is where invoices come from.
 
 AI Ali reads every invoice, codes it to the right GL account, runs the AP controls and queues the bill for approval. A person approves every bill before it is posted.
@@ -23,13 +23,27 @@ By **Hassan Ali**. MIT licence. No dependencies: Node.js 20+ and nothing else.
 | **Codes them** | Matches the vendor in your ledger and picks an expense account (and tax code) for each line from your own chart of accounts. |
 | **Runs the controls** | Duplicate detection (same vendor + invoice number, formatting-insensitive; same file; same amount within 10 days), arithmetic (lines → subtotal → tax → total), tax rate sanity check, PO match with tolerance, due-date and invoice-date checks, new-vendor flag, currency mismatch. |
 | **Keeps people in charge** | Every bill lands in **Approvals**. Reviewers can edit any field, and the checks re-run automatically. Blocking issues can't be approved; warnings must be acknowledged. The checks run again right before posting. |
-| **Posts to your ledger** | QuickBooks Online (Bill) or Xero (ACCPAY invoice), with the invoice file attached. New vendors are created on approval. |
+| **Posts to your ledger** | QuickBooks Online (Bill), Xero (ACCPAY invoice) or Zoho Books (Bill), with the invoice file attached. New vendors are created on approval. |
 | **Answers AP questions** | Aging, overdue, due soon, balances by vendor, open POs and the approval queue, always from tools and never guessed. |
 | **Keeps an audit trail** | Who proposed, edited, approved, rejected or posted what, and when. AI actions are labelled (`ai:anthropic`, `mcp:…`). |
 
 ![Approvals](docs/approvals.png)
 
-## Quick start
+## Install on Windows (easiest)
+
+1. Download **AI-Ali-Setup.exe** from the [latest release](https://github.com/hassanaliarshad110/AIAli/releases/latest).
+2. Double-click it. You don't need admin rights or Node.js, and it installs for your user only.
+   - If Windows shows *"Windows protected your PC"*, click **More info → Run anyway**. The installer isn't code-signed yet.
+3. Open **AI Ali** from the desktop or Start menu. It opens in your browser.
+   - A small minimised window keeps it running. Close that window to stop AI Ali.
+
+No installers allowed on your PC? Download **AI-Ali-Portable.zip**, unzip it, and double-click `Start AI Ali.cmd`.
+
+Your settings, keys and invoices are stored in `%APPDATA%\AI Ali`, and are kept when you update or uninstall.
+
+## Run from source (Mac, Linux, developers)
+
+Requires Node.js 20+.
 
 ```bash
 git clone https://github.com/hassanaliarshad110/AIAli.git
@@ -94,6 +108,17 @@ The same invoice arriving twice is caught twice over:
 
 If the AI or your ledger is unavailable, the invoice is retried on the next check, not lost. **Max invoices per check** (default 20) keeps AI costs predictable.
 
+## Connect Zoho Books
+
+1. In the [Zoho API console](https://api-console.zoho.com), add a client of type **Server-based Applications**, with the redirect URI shown in Settings (default `http://localhost:8787/oauth/zoho/callback`).
+2. If your Zoho Books is not on zoho.com, turn on **Multi-DC** for your region in the client's settings. That covers Europe, India, Australia, Japan, Canada, Saudi Arabia, the UK and China.
+3. Paste the client ID and secret, then click **Connect Zoho Books**.
+
+Notes:
+- AI Ali signs in at your own data centre and uses your default organisation, or the one you set as Organization ID.
+- Credentials are only ever sent to genuine Zoho servers.
+- Bills are posted with your Zoho VAT/tax codes, and the invoice PDF is attached.
+
 ## Use it from Claude or ChatGPT (MCP connector)
 
 The same AP tools are exposed as an MCP server. The AI app reads the invoice in its own chat, then calls `search_vendors` → `list_accounts` → `check_invoice` → `propose_bill`. Bills still wait in Approvals.
@@ -131,10 +156,10 @@ Tools: `ap_summary`, `list_bills`, `search_vendors`, `list_accounts`, `list_purc
 npm test
 ```
 
-32 offline tests cover:
+36 offline tests cover:
 - the AP controls
 - the full upload → AI → approval → posting flow against mock Claude and OpenAI APIs (PDF and image input, tool calling)
-- the QuickBooks and Xero connectors against mock APIs (OAuth exchange and refresh, queries, bill payloads, attachments)
+- the QuickBooks, Xero and Zoho Books connectors against mock APIs (OAuth exchange and refresh, multi-region sign-in, queries, bill payloads, attachments)
 - Gmail, Outlook and folder intake against mock mail APIs, including retries and de-duplication
 - the MCP server over HTTP and stdio
 
@@ -147,7 +172,9 @@ src/tools.js          the AP tools shared by the chat and the connector
 src/checks.js         AP controls
 src/ap.js             summary, aging, approval queue, posting
 src/intake/           gmail.js, outlook.js, folder.js and the scheduler (index.js)
-src/ledger/           demo.js, qbo.js, xero.js
+src/ledger/           demo.js, qbo.js, xero.js, zoho.js
+src/desktop.js        launcher used by the Windows app icon
+installer/            Windows installer (Inno Setup), built by .github/workflows/release.yml
 src/llm/              anthropic.js, openai.js
 src/mcp.js            MCP server (JSON-RPC), mcp-stdio.js for local clients
 public/               the web app (plain HTML/CSS/JS, no build step)
@@ -160,7 +187,8 @@ samples/              fictional sample invoices
 - Bill payments and payment runs
 - Multi-company support
 - Approval limits by amount
-- Sage and NetSuite connectors
+- Sage, NetSuite and ADDA connectors
+- Code-signed installer
 
 Contributions welcome.
 

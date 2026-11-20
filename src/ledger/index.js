@@ -2,8 +2,9 @@ import { get } from '../config.js';
 import { demo } from './demo.js';
 import { qbo } from './qbo.js';
 import { xero } from './xero.js';
+import { zoho } from './zoho.js';
 
-const ALL = { demo, qbo, xero };
+const ALL = { demo, qbo, xero, zoho };
 export const ledger = () => ALL[get('LEDGER')] || demo;
 
 // Small cache so a chat that looks up vendors and accounts several times doesn't hit the API every time.

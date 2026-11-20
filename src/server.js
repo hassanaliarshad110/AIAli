@@ -12,6 +12,7 @@ import { ledger, cached, clearCache } from './ledger/index.js';
 import { resetDemo } from './ledger/demo.js';
 import { qboAuthorizeUrl, qboExchange, qboRedirect } from './ledger/qbo.js';
 import { xeroAuthorizeUrl, xeroExchange, xeroRedirect, XERO_SCOPES } from './ledger/xero.js';
+import { zohoAuthorizeUrl, zohoExchange, zohoRedirect, ZOHO_SCOPES } from './ledger/zoho.js';
 import { runTurn, provider } from './agent.js';
 import { mcpHandle } from './mcp.js';
 import { toolList } from './tools.js';
@@ -73,7 +74,7 @@ async function status() {
     ai: { provider: P.name, model: P.model(), ready: P.ready() },
     queue: { pending: q.filter((x) => x.status === 'pending').length, posted: q.filter((x) => x.status === 'posted').length },
     connector: { url: `${publicUrl()}/mcp/${mcpToken()}`, local: !/^https:/.test(publicUrl()), tools: toolList().map((t) => t.name), aiPosting: bool('ALLOW_AI_POSTING') },
-    oauth: { qboRedirect: qboRedirect(), xeroRedirect: xeroRedirect(), xeroScopes: XERO_SCOPES, qboReady: !!(get('QBO_CLIENT_ID') && get('QBO_CLIENT_SECRET')), xeroReady: !!(get('XERO_CLIENT_ID') && get('XERO_CLIENT_SECRET')), qboConnected: !!store.tokens('qbo')?.refresh_token, xeroConnected: !!store.tokens('xero')?.refresh_token },
+    oauth: { qboRedirect: qboRedirect(), xeroRedirect: xeroRedirect(), xeroScopes: XERO_SCOPES, qboReady: !!(get('QBO_CLIENT_ID') && get('QBO_CLIENT_SECRET')), xeroReady: !!(get('XERO_CLIENT_ID') && get('XERO_CLIENT_SECRET')), qboConnected: !!store.tokens('qbo')?.refresh_token, xeroConnected: !!store.tokens('xero')?.refresh_token, zohoRedirect: zohoRedirect(), zohoScopes: ZOHO_SCOPES, zohoReady: !!(get('ZOHO_CLIENT_ID') && get('ZOHO_CLIENT_SECRET')), zohoConnected: !!store.tokens('zoho')?.refresh_token },
     intake: { sources: intake.status(), running: intake.isRunning(), enabled: bool('INTAKE_ENABLED'), every: get('INTAKE_INTERVAL_MIN'), gmailRedirect: gmailRedirect(), outlookRedirect: outlookRedirect(), gmailReady: !!(get('GMAIL_CLIENT_ID') && get('GMAIL_CLIENT_SECRET')), outlookReady: !!(get('OUTLOOK_CLIENT_ID') && get('OUTLOOK_CLIENT_SECRET')) },
     passwordSet: !!get('APP_PASSWORD'),
   };
@@ -98,7 +99,7 @@ const routes = [
   ['POST', /^\/api\/queue\/([\w-]+)\/edit$/, async (req, m) => { const b = await json(req); return ap.editQueued(m[1], b.draft || b, { by: 'user' }); }],
   ['GET', /^\/api\/audit$/, async () => ({ events: store.auditLog(300) })],
   ['POST', /^\/api\/demo\/reset$/, async () => { resetDemo(); clearCache(); store.audit('demo_reset', { by: 'user' }); return { ok: true }; }],
-  ['POST', /^\/api\/disconnect$/, async (req) => { const b = await json(req); if (['qbo', 'xero', 'gmail', 'outlook'].includes(b.ledger)) store.setTokens(b.ledger, null); clearCache(); store.audit('disconnected', { by: 'user', ledger: b.ledger }); return { ok: true }; }],
+  ['POST', /^\/api\/disconnect$/, async (req) => { const b = await json(req); if (['qbo', 'xero', 'zoho', 'gmail', 'outlook'].includes(b.ledger)) store.setTokens(b.ledger, null); clearCache(); store.audit('disconnected', { by: 'user', ledger: b.ledger }); return { ok: true }; }],
   ['GET', /^\/api\/intake$/, async () => ({ sources: intake.status(), running: intake.isRunning(), log: store.intakeLogs(100) })],
 ];
 
@@ -154,13 +155,18 @@ async function route(req, res) {
     if (!provider().ready()) return send(res, 400, { error: 'Add an AI API key in Settings first.' });
     return stream(res, async (emit) => ({ results: await intake.runAll({ onEvent: emit }) }));
   }
-  if (p === '/oauth/qbo/callback' || p === '/oauth/xero/callback') {
-    const which = p.includes('qbo') ? 'qbo' : 'xero';
+  if (p === '/oauth/zoho/start') {
+    if (!get('ZOHO_CLIENT_ID') || !get('ZOHO_CLIENT_SECRET')) return html(res, 400, 'Add your Zoho client id and secret in Settings first.');
+    return send(res, 302, '', { location: zohoAuthorizeUrl(newState('zoho')) });
+  }
+  if (p === '/oauth/qbo/callback' || p === '/oauth/xero/callback' || p === '/oauth/zoho/callback') {
+    const which = p.includes('qbo') ? 'qbo' : p.includes('zoho') ? 'zoho' : 'xero';
     const sp = url.searchParams;
     if (sp.get('error')) return html(res, 400, `Connection cancelled: ${sp.get('error')}`);
     if (!takeState(sp.get('state'), which)) return html(res, 400, 'This sign-in link expired. Start again from Settings.');
     try {
       if (which === 'qbo') await qboExchange(sp.get('code'), sp.get('realmId'));
+      else if (which === 'zoho') await zohoExchange(sp.get('code'), sp.get('accounts-server'));
       else await xeroExchange(sp.get('code'));
       save({ LEDGER: which }); clearCache(); store.audit('connected', { by: 'user', ledger: which });
       return send(res, 302, '', { location: '/#settings' });
@@ -216,15 +222,28 @@ export function createServer() {
   });
 }
 
+// Starts the web app, prints where it runs, and starts the automatic intake. Used by `npm start` and the desktop launcher.
+export function start({ port = Number(get('PORT')), host = get('HOST'), quiet = false } = {}) {
+  return new Promise((resolve, reject) => {
+    const srv = createServer();
+    srv.once('error', reject);
+    srv.listen(port, host, () => {
+      if (!quiet) {
+        console.log(`\n  AI Ali is running: http://${host === '0.0.0.0' ? 'localhost' : host}:${port}\n`);
+        console.log(`  Ledger: ${ledger().label}   AI: ${provider().name} (${provider().ready() ? 'key set' : 'no key yet, add one in Settings'})`);
+        if (host !== '127.0.0.1' && host !== 'localhost' && !get('APP_PASSWORD')) console.log('  WARNING: reachable from other machines without APP_PASSWORD. Set APP_PASSWORD in .env.');
+        const on = Object.values(intake.status()).filter((s) => s.connected).map((s) => s.label);
+        console.log(`  Automatic intake: ${on.length ? `${on.join(', ')}, every ${get('INTAKE_INTERVAL_MIN')} min${bool('INTAKE_ENABLED') ? '' : ' (paused)'}` : 'no sources connected'}`);
+      }
+      intake.startScheduler();
+      resolve(srv);
+    });
+  });
+}
+
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  const port = Number(get('PORT')), host = get('HOST');
-  createServer().listen(port, host, () => {
-    console.log(`\n  AI Ali is running: http://${host === '0.0.0.0' ? 'localhost' : host}:${port}\n`);
-    console.log(`  Ledger: ${ledger().label}   AI: ${provider().name} (${provider().ready() ? 'key set' : 'no key yet, add one in Settings'})`);
-    if (host !== '127.0.0.1' && host !== 'localhost' && !get('APP_PASSWORD')) console.log('  WARNING: reachable from other machines without APP_PASSWORD. Set APP_PASSWORD in .env.');
-    const on = Object.values(intake.status()).filter((s) => s.connected).map((s) => s.label);
-    console.log(`  Automatic intake: ${on.length ? `${on.join(', ')}, every ${get('INTAKE_INTERVAL_MIN')} min${bool('INTAKE_ENABLED') ? '' : ' (paused)'}` : 'no sources connected'}`);
-    intake.startScheduler();
-    console.log('');
+  start().catch((e) => {
+    console.error(e.code === 'EADDRINUSE' ? `\n  Port ${get('PORT')} is already in use. AI Ali may already be running: open http://localhost:${get('PORT')}\n` : e);
+    process.exit(1);
   });
 }

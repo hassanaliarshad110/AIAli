@@ -179,3 +179,40 @@ export function graphMock(files, log = []) {
     return { status: 404, json: { error: { message: 'nope ' + url.pathname } } };
   });
 }
+
+// --- Zoho Books API v3 (EU data centre, to exercise the multi-DC flow)
+export function zohoMock(log = []) {
+  const db = {
+    contacts: [{ contact_id: 'z-v1', contact_name: 'Peak IT Services', contact_type: 'vendor', email: 'accounts@peakit.example', currency_code: 'AED' }],
+    chartofaccounts: [{ account_id: 'z-a1', account_name: 'IT and Internet Expenses', account_code: '6200', account_type: 'expense', is_active: true }, { account_id: 'z-a2', account_name: 'Petty Cash', account_type: 'cash', is_active: true }],
+    taxes: [{ tax_id: 'z-t5', tax_name: 'VAT 5%', tax_percentage: 5 }],
+    bills: [{ bill_id: 'z-b1', vendor_id: 'z-v1', vendor_name: 'Peak IT Services', bill_number: 'PIT-5512', date: '2026-10-01', due_date: '2026-10-31', total: 3018.75, balance: 3018.75, status: 'overdue', currency_code: 'AED' }],
+    purchaseorders: [{ purchaseorder_id: 'z-p1', purchaseorder_number: 'PO-1007', vendor_id: 'z-v1', vendor_name: 'Peak IT Services', date: '2026-10-30', total: 4410, status: 'open' }],
+  };
+  return serve(({ req, url, body, raw }) => {
+    log.push({ method: req.method, path: url.pathname, search: url.search, body, auth: req.headers.authorization, ctype: req.headers['content-type'], raw });
+    if (url.pathname === '/oauth/v2/token') return { json: { access_token: 'z-at', refresh_token: 'z-rt', api_domain: `http://127.0.0.1:${req.socket.localPort}`, token_type: 'Bearer', expires_in: 3600 } };
+    if (req.headers.authorization !== 'Zoho-oauthtoken z-at') return { status: 401, json: { code: 57, message: 'You are not authorized' } };
+    const p = url.pathname.replace('/books/v3', '');
+    if (p === '/organizations') return { json: { code: 0, organizations: [{ organization_id: '999', name: 'Maple Ridge FZ-LLC', currency_code: 'AED', is_default_org: true, country: 'U.A.E' }] } };
+    if (url.searchParams.get('organization_id') !== '999') return { status: 400, json: { code: 6041, message: 'organization_id missing' } };
+    if (p === '/contacts' && req.method === 'GET') return { json: { code: 0, contacts: db.contacts, page_context: { has_more_page: false } } };
+    if (p === '/contacts' && req.method === 'POST') { const c = { contact_id: 'z-v' + (db.contacts.length + 1), contact_name: body.contact_name }; db.contacts.push(c); return { json: { code: 0, contact: c } }; }
+    if (p === '/chartofaccounts') return { json: { code: 0, chartofaccounts: db.chartofaccounts } };
+    if (p === '/settings/taxes') return { json: { code: 0, taxes: db.taxes } };
+    if (p === '/purchaseorders') return { json: { code: 0, purchaseorders: db.purchaseorders, page_context: { has_more_page: false } } };
+    if (p === '/bills' && req.method === 'GET') {
+      const n = url.searchParams.get('bill_number');
+      return { json: { code: 0, bills: n ? db.bills.filter((b) => b.bill_number === n) : db.bills, page_context: { has_more_page: false } } };
+    }
+    if (p === '/bills' && req.method === 'POST') {
+      if (!body.vendor_id || !body.line_items?.every((l) => l.account_id)) return { status: 400, json: { code: 4, message: 'Invalid value' } };
+      const sub = body.line_items.reduce((s, l) => s + l.rate * l.quantity, 0);
+      const tax = body.line_items.reduce((s, l) => s + (l.tax_id === 'z-t5' ? l.rate * 0.05 : 0), 0);
+      const b = { bill_id: 'z-b9', ...body, total: Math.round((sub + tax) * 100) / 100, tax_total: Math.round(tax * 100) / 100, balance: sub + tax, status: 'open' };
+      db.bills.push(b); return { json: { code: 0, message: 'The bill has been created.', bill: b } };
+    }
+    if (/^\/bills\/[\w-]+\/attachment$/.test(p)) return { json: { code: 0, message: 'Your file has been attached.' } };
+    return { status: 404, json: { code: 404, message: 'nope ' + p } };
+  });
+}

@@ -9,6 +9,7 @@
   "bin": { "ai-ali": "src/server.js", "ai-ali-mcp": "src/mcp-stdio.js" },
   "scripts": {
     "start": "node src/server.js",
+    "desktop": "node src/desktop.js",
     "mcp": "node src/mcp-stdio.js",
     "test": "node --test test/*.test.js"
   },

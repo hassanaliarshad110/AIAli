@@ -192,7 +192,7 @@ function card(q) {
   const acct = (sel) => `<select data-k="accountId" ${dis}><option value="">Choose account…</option>${LOOK.accounts.map((a) => `<option value="${esc(a.id)}" ${String(a.id) === String(sel) ? 'selected' : ''}>${esc(a.code ? `${a.code} · ${a.name}` : a.name)}</option>`).join('')}</select>`;
   const tax = (sel) => LOOK.taxCodes.length ? `<select data-k="taxCode" ${dis}><option value="">—</option>${LOOK.taxCodes.map((t) => `<option value="${esc(t.id)}" ${String(t.id) === String(sel) ? 'selected' : ''}>${esc(t.name)}</option>`).join('')}</select>` : '';
   const hasWarn = q.checks.result === 'review', blocked = q.checks.result === 'blocked';
-  const posted = q.posted ? `Posted ${q.posted.at.slice(0, 16).replace('T', ' ')} to ${q.posted.ledger === 'qbo' ? 'QuickBooks' : q.posted.ledger === 'xero' ? 'Xero' : 'the demo ledger'} as ${esc(q.posted.id)}${q.posted.url ? ` · <a href="${esc(q.posted.url)}" target="_blank" rel="noopener">open</a>` : ''}${(q.posted.warnings || []).map((w) => `<br>⚠ ${esc(w)}`).join('')}` : '';
+  const posted = q.posted ? `Posted ${q.posted.at.slice(0, 16).replace('T', ' ')} to ${({ qbo: 'QuickBooks', xero: 'Xero', zoho: 'Zoho Books' }[q.posted.ledger] || 'the demo ledger')} as ${esc(q.posted.id)}${q.posted.url ? ` · <a href="${esc(q.posted.url)}" target="_blank" rel="noopener">open</a>` : ''}${(q.posted.warnings || []).map((w) => `<br>⚠ ${esc(w)}`).join('')}` : '';
   return `<div class="q" data-id="${q.id}">
     <div class="qh"><span class="pill ${q.status === 'pending' ? q.checks.result : q.status}">${q.status === 'pending' ? { pass: 'Checks passed', review: 'Needs review', blocked: 'Blocked' }[q.checks.result] : q.status}</span>
       <div><b>${esc(d.vendor.name)}</b><br><small class="muted">${esc(d.number)} · proposed by ${esc(q.proposedBy)} · ${q.created.slice(0, 16).replace('T', ' ')}</small></div>
@@ -293,28 +293,36 @@ async function loadSettings() {
 function renderLedger(s, st) {
   const L = s.LEDGER, el = $('#ledger-detail');
   if (L === 'demo') { el.innerHTML = `<div class="status-line"><span class="dot"></span>Using the demo ledger: ${esc(st.ledger.company || '')}.</div>`; return; }
-  const q = L === 'qbo';
-  const pfx = q ? 'QBO' : 'XERO';
-  const connected = q ? st.oauth.qboConnected : st.oauth.xeroConnected;
-  const ready = q ? st.oauth.qboReady : st.oauth.xeroReady;
+  const O = st.oauth;
+  const cfg = {
+    qbo: { pfx: 'QBO', name: 'QuickBooks Online', btn: 'QuickBooks', redirect: O.qboRedirect, ready: O.qboReady, connected: O.qboConnected,
+      steps: `<li>Sign in at <a href="https://developer.intuit.com" target="_blank" rel="noopener">developer.intuit.com</a> and create an app (QuickBooks Online and Payments, Accounting scope). A free sandbox company comes with it.</li>`,
+      extra: `<label>Environment<select name="QBO_ENVIRONMENT"><option value="sandbox" ${s.QBO_ENVIRONMENT === 'sandbox' ? 'selected' : ''}>Sandbox</option><option value="production" ${s.QBO_ENVIRONMENT === 'production' ? 'selected' : ''}>Production</option></select></label>
+        <label>Default tax code id (optional)<input name="QBO_DEFAULT_TAX_CODE" value="${esc(s.QBO_DEFAULT_TAX_CODE || '')}"><small>For companies outside the US. Leave empty for US companies.</small></label>` },
+    xero: { pfx: 'XERO', name: 'Xero', btn: 'Xero', redirect: O.xeroRedirect, ready: O.xeroReady, connected: O.xeroConnected,
+      steps: `<li>Sign in at <a href="https://developer.xero.com/app/manage" target="_blank" rel="noopener">developer.xero.com/app/manage</a> and create a <b>Web app</b>. Use the Xero demo company to test.</li>`,
+      after: `<li>Scopes requested (granular, as Xero requires for new apps): <code>${esc(O.xeroScopes)}</code></li>`,
+      extra: `<label>Bill status after approval<select name="XERO_BILL_STATUS"><option value="AUTHORISED" ${s.XERO_BILL_STATUS !== 'DRAFT' ? 'selected' : ''}>Awaiting payment (authorised)</option><option value="DRAFT" ${s.XERO_BILL_STATUS === 'DRAFT' ? 'selected' : ''}>Draft in Xero</option></select></label>` },
+    zoho: { pfx: 'ZOHO', name: 'Zoho Books', btn: 'Zoho Books', redirect: O.zohoRedirect, ready: O.zohoReady, connected: O.zohoConnected,
+      steps: `<li>Open the <a href="https://api-console.zoho.com" target="_blank" rel="noopener">Zoho API console</a> → Add client → <b>Server-based Applications</b>. Homepage URL: <code>${esc(location.origin)}</code>.</li>
+        <li>If your Zoho Books is not on zoho.com (Europe, India, Australia, Japan, Canada, Saudi Arabia, UK, China), open the client's <b>Settings</b> and turn on <b>Multi-DC</b> for your region.</li>`,
+      after: `<li>Scopes requested: <code>${esc(O.zohoScopes)}</code></li>`,
+      extra: `<label>Organization ID (optional)<input name="ZOHO_ORGANIZATION_ID" value="${esc(s.ZOHO_ORGANIZATION_ID || '')}"><small>Only if you have several organisations. Otherwise the default one is used.</small></label>` },
+  }[L];
+  const k = cfg.pfx;
   el.innerHTML = `
-    <div class="status-line"><span class="dot ${st.ledger.key === L && st.ledger.connected ? '' : 'off'}"></span>${st.ledger.key === L && st.ledger.connected ? `Connected to <b>${esc(st.ledger.company)}</b>` : connected ? `Signed in, but the connection failed: ${esc(st.ledger.error || '')}` : 'Not connected yet.'}</div>
-    <div class="steps-box"><b>How to connect ${q ? 'QuickBooks Online' : 'Xero'}</b><ol>
-      ${q ? `<li>Sign in at <a href="https://developer.intuit.com" target="_blank" rel="noopener">developer.intuit.com</a> and create an app (QuickBooks Online and Payments, Accounting scope). A free sandbox company comes with it.</li>`
-          : `<li>Sign in at <a href="https://developer.xero.com/app/manage" target="_blank" rel="noopener">developer.xero.com/app/manage</a> and create a <b>Web app</b>. Use the Xero demo company to test.</li>`}
-      <li>Add this redirect URI to the app:<div class="copy"><code>${esc(q ? st.oauth.qboRedirect : st.oauth.xeroRedirect)}</code><button class="btn ghost sm" data-copy="${esc(q ? st.oauth.qboRedirect : st.oauth.xeroRedirect)}">Copy</button></div></li>
-      <li>Paste the client id and secret below, save, then click Connect.</li>
-      ${q ? '' : `<li>Scopes requested (granular, as Xero requires for new apps): <code>${esc(st.oauth.xeroScopes)}</code></li>`}
+    <div class="status-line"><span class="dot ${st.ledger.key === L && st.ledger.connected ? '' : 'off'}"></span>${st.ledger.key === L && st.ledger.connected ? `Connected to <b>${esc(st.ledger.company)}</b>` : cfg.connected ? `Signed in, but the connection failed: ${esc(st.ledger.error || '')}` : 'Not connected yet.'}</div>
+    <div class="steps-box"><b>How to connect ${cfg.name}</b><ol>${cfg.steps}
+      <li>Add this redirect URI to the app:<div class="copy"><code>${esc(cfg.redirect)}</code><button class="btn ghost sm" data-copy="${esc(cfg.redirect)}">Copy</button></div></li>
+      <li>Paste the client id and secret below, save, then click Connect.</li>${cfg.after || ''}
     </ol></div>
     <div class="form">
-      <label>Client ID<input name="${pfx}_CLIENT_ID" value="${esc(s[pfx + '_CLIENT_ID'] || '')}"></label>
-      <label>Client secret<input name="${pfx}_CLIENT_SECRET" type="password" placeholder="${s[pfx + '_CLIENT_SECRET'] ? esc(s[pfx + '_CLIENT_SECRET']) + ' (saved)' : ''}"></label>
-      ${q ? `<label>Environment<select name="QBO_ENVIRONMENT"><option value="sandbox" ${s.QBO_ENVIRONMENT === 'sandbox' ? 'selected' : ''}>Sandbox</option><option value="production" ${s.QBO_ENVIRONMENT === 'production' ? 'selected' : ''}>Production</option></select></label>
-            <label>Default tax code id (optional)<input name="QBO_DEFAULT_TAX_CODE" value="${esc(s.QBO_DEFAULT_TAX_CODE || '')}"><small>For companies outside the US. Leave empty for US companies.</small></label>`
-        : `<label>Bill status after approval<select name="XERO_BILL_STATUS"><option value="AUTHORISED" ${s.XERO_BILL_STATUS !== 'DRAFT' ? 'selected' : ''}>Awaiting payment (authorised)</option><option value="DRAFT" ${s.XERO_BILL_STATUS === 'DRAFT' ? 'selected' : ''}>Draft in Xero</option></select></label>`}
+      <label>Client ID<input name="${k}_CLIENT_ID" value="${esc(s[k + '_CLIENT_ID'] || '')}"></label>
+      <label>Client secret<input name="${k}_CLIENT_SECRET" type="password" placeholder="${s[k + '_CLIENT_SECRET'] ? esc(s[k + '_CLIENT_SECRET']) + ' (saved)' : ''}"></label>
+      ${cfg.extra}
     </div>
-    <button class="btn ghost" data-save-ledger>Save</button> <a class="btn" href="/oauth/${L}/start" ${ready ? '' : 'style="opacity:.5;pointer-events:none"'}>${connected ? 'Reconnect' : 'Connect'} ${q ? 'QuickBooks' : 'Xero'}</a>
-    ${connected ? ` <button class="btn danger" data-disconnect="${L}">Disconnect</button>` : ''}`;
+    <button class="btn ghost" data-save-ledger>Save</button> <a class="btn" href="/oauth/${L}/start" ${cfg.ready ? '' : 'style="opacity:.5;pointer-events:none"'}>${cfg.connected ? 'Reconnect' : 'Connect'} ${cfg.btn}</a>
+    ${cfg.connected ? ` <button class="btn danger" data-disconnect="${L}">Disconnect</button>` : ''}`;
 }
 function renderAI(s) {
   const o = s.AI_PROVIDER === 'openai';

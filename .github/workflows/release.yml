@@ -1,0 +1,90 @@
+name: Build Windows installer
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version (e.g. 0.2.0)'
+        required: true
+        default: '0.2.0'
+
+permissions:
+  contents: write
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 24 }
+      - run: npm test
+
+  windows:
+    needs: test
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 24 }
+
+      - name: Version
+        id: v
+        shell: pwsh
+        run: |
+          $v = if ("${{ github.event_name }}" -eq "push") { "${{ github.ref_name }}".TrimStart('v') } else { "${{ inputs.version }}" }
+          "version=$v" >> $env:GITHUB_OUTPUT
+
+      - name: Bundle the Node.js runtime
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force build\runtime | Out-Null
+          Copy-Item (Get-Command node).Source build\runtime\node.exe
+          build\runtime\node.exe --version
+
+      - name: Smoke test the desktop launcher
+        shell: pwsh
+        run: |
+          $env:AP_DATA_DIR = "$env:RUNNER_TEMP\aiali-smoke"
+          $p = Start-Process -FilePath build\runtime\node.exe -ArgumentList "src\desktop.js" -PassThru -WindowStyle Hidden
+          Start-Sleep -Seconds 4
+          $s = Invoke-RestMethod http://localhost:8787/api/status
+          if (-not $s.ledger.connected) { throw "AI Ali did not start" }
+          Stop-Process -Id $p.Id -Force
+
+      - name: Build installer (Inno Setup)
+        shell: pwsh
+        run: |
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $iscc)) { choco install innosetup -y --no-progress }
+          & $iscc "/DAppVersion=${{ steps.v.outputs.version }}" installer\ai-ali.iss
+          if ($LASTEXITCODE -ne 0) { throw "ISCC failed" }
+
+      - name: Build portable zip
+        shell: pwsh
+        run: |
+          $d = "build\AI-Ali-Portable"
+          New-Item -ItemType Directory -Force "$d\app" | Out-Null
+          Copy-Item -Recurse build\runtime "$d\runtime"
+          foreach ($x in 'src','public','samples','assets') { Copy-Item -Recurse $x "$d\app\$x" }
+          Copy-Item package.json,README.md,LICENSE,.env.example "$d\app"
+          Copy-Item installer\Start-AI-Ali.cmd "$d\Start AI Ali.cmd"
+          Compress-Archive -Path "$d\*" -DestinationPath dist\AI-Ali-Portable.zip -Force
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: AI-Ali-${{ steps.v.outputs.version }}
+          path: dist/*
+
+      - name: Publish GitHub release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $v = "v${{ steps.v.outputs.version }}"
+          $notes = "Windows: download **AI-Ali-Setup.exe**, double-click, and open AI Ali from the desktop icon. No admin rights or Node.js needed.`n`nNo installer allowed on your PC? Use **AI-Ali-Portable.zip**: unzip and double-click ``Start AI Ali.cmd``."
+          gh release view $v 2>$null
+          if ($LASTEXITCODE -eq 0) { gh release upload $v dist\AI-Ali-Setup.exe dist\AI-Ali-Portable.zip --clobber }
+          else { gh release create $v dist\AI-Ali-Setup.exe dist\AI-Ali-Portable.zip --title "AI Ali $v" --notes $notes }

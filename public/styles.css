@@ -86,7 +86,7 @@ td.n,th.n{text-align:right;font-variant-numeric:tabular-nums}
 .chips button:hover{border-color:var(--blue);color:var(--blue)}
 .composer{display:flex;gap:10px;position:sticky;bottom:16px;background:#fff;border:1px solid var(--line);border-radius:14px;padding:8px;box-shadow:0 6px 24px rgba(16,24,40,.08)}
 .composer textarea{flex:1;border:0;resize:none;font:inherit;padding:8px 10px;outline:none;max-height:160px}
-.opts{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:16px}.opts.small{grid-template-columns:repeat(2,1fr);max-width:520px}
+.opts{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px}.opts.small{grid-template-columns:repeat(2,1fr);max-width:520px}
 .opts label{display:flex;gap:10px;border:1px solid var(--line);border-radius:12px;padding:12px 14px;cursor:pointer}
 .opts label:has(input:checked){border-color:var(--blue);background:var(--blue-soft)}
 .opts b{display:block;font-size:14.5px}.opts small{color:var(--muted);font-size:12.5px;display:block}
