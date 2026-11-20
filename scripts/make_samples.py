@@ -53,7 +53,7 @@ def invoice(fname, v):
         c.drawRightString(470, y, label); c.drawRightString(W - 48, y, money(val)); y -= 20
     c.setFont('Helvetica', 9); c.setFillColor(HexColor('#555555'))
     for i, line in enumerate(v['footer']): c.drawString(48, 90 - i * 12, line)
-    c.setFont('Helvetica-Oblique', 8); c.drawString(48, 40, 'Sample invoice for testing Open AP Agent. Fictional company.')
+    c.setFont('Helvetica-Oblique', 8); c.drawString(48, 40, 'Sample invoice for testing AI Ali. Fictional company.')
     c.save()
     print(fname, 'subtotal', sub, 'tax', tax, 'total', total)
 

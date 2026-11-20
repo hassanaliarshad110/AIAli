@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Open AP Agent: web app + API + AI connector (MCP). No dependencies, Node 20+.
+// AI Ali: web app + API + AI connector (MCP). No dependencies, Node 20+.
 import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -15,6 +15,9 @@ import { xeroAuthorizeUrl, xeroExchange, xeroRedirect, XERO_SCOPES } from './led
 import { runTurn, provider } from './agent.js';
 import { mcpHandle } from './mcp.js';
 import { toolList } from './tools.js';
+import * as intake from './intake/index.js';
+import { gmailAuthorizeUrl, gmailExchange, gmailRedirect } from './intake/gmail.js';
+import { outlookAuthorizeUrl, outlookExchange, outlookRedirect } from './intake/outlook.js';
 
 const PUBLIC = path.join(ROOT, 'public');
 const SAMPLES = path.join(ROOT, 'samples');
@@ -26,7 +29,7 @@ const send = (res, code, body, headers = {}) => {
   res.writeHead(code, { 'content-type': isBuf ? 'application/octet-stream' : 'application/json; charset=utf-8', 'cache-control': 'no-store', ...headers });
   res.end(isBuf || typeof body === 'string' ? body : JSON.stringify(body));
 };
-const html = (res, code, msg) => send(res, code, `<!doctype html><meta charset=utf-8><meta name=viewport content="width=device-width"><title>Open AP Agent</title><body style="font:16px system-ui;padding:40px;max-width:640px;margin:auto"><p>${msg}</p><p><a href="/#settings">Back to Open AP Agent</a></p>`, { 'content-type': 'text/html; charset=utf-8' });
+const html = (res, code, msg) => send(res, code, `<!doctype html><meta charset=utf-8><meta name=viewport content="width=device-width"><title>AI Ali</title><body style="font:16px system-ui;padding:40px;max-width:640px;margin:auto"><p>${msg}</p><p><a href="/#settings">Back to AI Ali</a></p>`, { 'content-type': 'text/html; charset=utf-8' });
 
 function readBody(req) {
   return new Promise((resolve, reject) => {
@@ -71,6 +74,7 @@ async function status() {
     queue: { pending: q.filter((x) => x.status === 'pending').length, posted: q.filter((x) => x.status === 'posted').length },
     connector: { url: `${publicUrl()}/mcp/${mcpToken()}`, local: !/^https:/.test(publicUrl()), tools: toolList().map((t) => t.name), aiPosting: bool('ALLOW_AI_POSTING') },
     oauth: { qboRedirect: qboRedirect(), xeroRedirect: xeroRedirect(), xeroScopes: XERO_SCOPES, qboReady: !!(get('QBO_CLIENT_ID') && get('QBO_CLIENT_SECRET')), xeroReady: !!(get('XERO_CLIENT_ID') && get('XERO_CLIENT_SECRET')), qboConnected: !!store.tokens('qbo')?.refresh_token, xeroConnected: !!store.tokens('xero')?.refresh_token },
+    intake: { sources: intake.status(), running: intake.isRunning(), enabled: bool('INTAKE_ENABLED'), every: get('INTAKE_INTERVAL_MIN'), gmailRedirect: gmailRedirect(), outlookRedirect: outlookRedirect(), gmailReady: !!(get('GMAIL_CLIENT_ID') && get('GMAIL_CLIENT_SECRET')), outlookReady: !!(get('OUTLOOK_CLIENT_ID') && get('OUTLOOK_CLIENT_SECRET')) },
     passwordSet: !!get('APP_PASSWORD'),
   };
 }
@@ -94,7 +98,8 @@ const routes = [
   ['POST', /^\/api\/queue\/([\w-]+)\/edit$/, async (req, m) => { const b = await json(req); return ap.editQueued(m[1], b.draft || b, { by: 'user' }); }],
   ['GET', /^\/api\/audit$/, async () => ({ events: store.auditLog(300) })],
   ['POST', /^\/api\/demo\/reset$/, async () => { resetDemo(); clearCache(); store.audit('demo_reset', { by: 'user' }); return { ok: true }; }],
-  ['POST', /^\/api\/disconnect$/, async (req) => { const b = await json(req); if (['qbo', 'xero'].includes(b.ledger)) store.setTokens(b.ledger, null); clearCache(); store.audit('disconnected', { by: 'user', ledger: b.ledger }); return { ok: true }; }],
+  ['POST', /^\/api\/disconnect$/, async (req) => { const b = await json(req); if (['qbo', 'xero', 'gmail', 'outlook'].includes(b.ledger)) store.setTokens(b.ledger, null); clearCache(); store.audit('disconnected', { by: 'user', ledger: b.ledger }); return { ok: true }; }],
+  ['GET', /^\/api\/intake$/, async () => ({ sources: intake.status(), running: intake.isRunning(), log: store.intakeLogs(100) })],
 ];
 
 async function route(req, res) {
@@ -116,7 +121,7 @@ async function route(req, res) {
     return out ? send(res, 200, out, cors) : send(res, 202, '', cors);
   }
 
-  if (!authorized(req)) return send(res, 401, 'Password required', { 'www-authenticate': 'Basic realm="Open AP Agent"', 'content-type': 'text/plain' });
+  if (!authorized(req)) return send(res, 401, 'Password required', { 'www-authenticate': 'Basic realm="AI Ali"', 'content-type': 'text/plain' });
 
   // ---- OAuth for QuickBooks / Xero
   if (p === '/oauth/qbo/start') {
@@ -126,6 +131,28 @@ async function route(req, res) {
   if (p === '/oauth/xero/start') {
     if (!get('XERO_CLIENT_ID') || !get('XERO_CLIENT_SECRET')) return html(res, 400, 'Add your Xero client id and secret in Settings first.');
     return send(res, 302, '', { location: xeroAuthorizeUrl(newState('xero')) });
+  }
+  const START = { gmail: ['GMAIL', 'Gmail', gmailAuthorizeUrl], outlook: ['OUTLOOK', 'Outlook', outlookAuthorizeUrl] };
+  const ms = p.match(/^\/oauth\/(gmail|outlook)\/start$/);
+  if (ms) {
+    const [pfx, label, fn] = START[ms[1]];
+    if (!get(`${pfx}_CLIENT_ID`) || !get(`${pfx}_CLIENT_SECRET`)) return html(res, 400, `Add your ${label} client id and secret in Settings first.`);
+    return send(res, 302, '', { location: fn(newState(ms[1])) });
+  }
+  const mc = p.match(/^\/oauth\/(gmail|outlook)\/callback$/);
+  if (mc) {
+    const sp = url.searchParams;
+    if (sp.get('error')) return html(res, 400, `Connection cancelled: ${sp.get('error_description') || sp.get('error')}`);
+    if (!takeState(sp.get('state'), mc[1])) return html(res, 400, 'This sign-in link expired. Start again from Settings.');
+    try {
+      await (mc[1] === 'gmail' ? gmailExchange : outlookExchange)(sp.get('code'));
+      store.audit('connected', { by: 'user', source: mc[1] });
+      return send(res, 302, '', { location: '/#settings' });
+    } catch (e) { return html(res, 400, `Couldn't connect: ${e.message}`); }
+  }
+  if (req.method === 'POST' && p === '/api/intake/run') {
+    if (!provider().ready()) return send(res, 400, { error: 'Add an AI API key in Settings first.' });
+    return stream(res, async (emit) => ({ results: await intake.runAll({ onEvent: emit }) }));
   }
   if (p === '/oauth/qbo/callback' || p === '/oauth/xero/callback') {
     const which = p.includes('qbo') ? 'qbo' : 'xero';
@@ -192,9 +219,12 @@ export function createServer() {
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const port = Number(get('PORT')), host = get('HOST');
   createServer().listen(port, host, () => {
-    console.log(`\n  Open AP Agent is running: http://${host === '0.0.0.0' ? 'localhost' : host}:${port}\n`);
+    console.log(`\n  AI Ali is running: http://${host === '0.0.0.0' ? 'localhost' : host}:${port}\n`);
     console.log(`  Ledger: ${ledger().label}   AI: ${provider().name} (${provider().ready() ? 'key set' : 'no key yet, add one in Settings'})`);
     if (host !== '127.0.0.1' && host !== 'localhost' && !get('APP_PASSWORD')) console.log('  WARNING: reachable from other machines without APP_PASSWORD. Set APP_PASSWORD in .env.');
+    const on = Object.values(intake.status()).filter((s) => s.connected).map((s) => s.label);
+    console.log(`  Automatic intake: ${on.length ? `${on.join(', ')}, every ${get('INTAKE_INTERVAL_MIN')} min${bool('INTAKE_ENABLED') ? '' : ' (paused)'}` : 'no sources connected'}`);
+    intake.startScheduler();
     console.log('');
   });
 }

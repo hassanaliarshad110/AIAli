@@ -1,6 +1,12 @@
-# Open AP Agent
+# AI Ali
 
-**An open-source AI accounts payable agent you run yourself.** Bring your own Claude or OpenAI API key, connect QuickBooks Online or Xero, and let the agent read invoices, code them to the right GL account, run the AP controls and queue the bills for approval. A person approves every bill before it is posted.
+**AI Ali is an open-source AI accounts payable agent you run yourself.** Connect your own APIs, and invoices flow in on their own:
+
+- Your Claude or OpenAI key does the AI work.
+- QuickBooks Online or Xero is where the bills get posted.
+- Your Gmail or Outlook AP mailbox, or a folder on your computer, is where invoices come from.
+
+AI Ali reads every invoice, codes it to the right GL account, runs the AP controls and queues the bill for approval. A person approves every bill before it is posted.
 
 It also answers questions about your payables, such as "what's overdue?", "what do we owe Peak IT?" or "what's due in the next 14 days?", using live figures from your ledger. And it works as a **connector for Claude and ChatGPT**, so you can do all of this from the AI app you already use.
 
@@ -12,7 +18,8 @@ By **Hassan Ali**. MIT licence. No dependencies: Node.js 20+ and nothing else.
 
 | | |
 |---|---|
-| **Reads invoices** | PDFs and photos (PNG, JPG, WEBP). Extracts the vendor, invoice number, dates, terms, PO number, lines, subtotal, tax and total. |
+| **Picks up invoices by itself** | Watches a Gmail or Outlook / Microsoft 365 mailbox (read-only) and a folder on your computer, such as scanner output or a synced OneDrive, Google Drive or Dropbox folder. New PDF and image attachments are processed every few minutes. Logos, newsletters, statements and files it has already seen are skipped. |
+| **Reads invoices** | PDFs and photos (PNG, JPG, WEBP), uploaded or picked up. Extracts the vendor, invoice number, dates, terms, PO number, lines, subtotal, tax and total. |
 | **Codes them** | Matches the vendor in your ledger and picks an expense account (and tax code) for each line from your own chart of accounts. |
 | **Runs the controls** | Duplicate detection (same vendor + invoice number, formatting-insensitive; same file; same amount within 10 days), arithmetic (lines → subtotal → tax → total), tax rate sanity check, PO match with tolerance, due-date and invoice-date checks, new-vendor flag, currency mismatch. |
 | **Keeps people in charge** | Every bill lands in **Approvals**. Reviewers can edit any field, and the checks re-run automatically. Blocking issues can't be approved; warnings must be acknowledged. The checks run again right before posting. |
@@ -25,8 +32,8 @@ By **Hassan Ali**. MIT licence. No dependencies: Node.js 20+ and nothing else.
 ## Quick start
 
 ```bash
-git clone https://github.com/hassanaliarshad110/open-ap-agent.git
-cd open-ap-agent
+git clone https://github.com/hassanaliarshad110/ai-ali.git
+cd ai-ali
 npm start
 ```
 
@@ -59,6 +66,34 @@ Notes:
 - The app requests Xero's **granular scopes**, which apps created since March 2026 must use: `accounting.invoices accounting.contacts accounting.settings.read accounting.attachments`.
 - Approved bills go to Xero as *Awaiting payment* (AUTHORISED), or as *Draft* if you prefer to approve them in Xero too.
 
+## Connect your invoice sources
+
+Each source is set up once in **Settings → Where invoices come from**. After that, AI Ali checks it every 5 minutes (you can change this), or whenever you click **Check now** in the Inbox. On the first check it looks back 3 days, then continues from where it stopped.
+
+**Gmail** (read-only, `gmail.readonly`)
+1. In Google Cloud console, enable the Gmail API.
+2. Create an OAuth client of type *Web application*, with the redirect URI shown in Settings.
+3. Set the consent screen to *Internal* (Google Workspace) or *In production* (personal Gmail). In *Testing* mode, Google expires the access every 7 days.
+4. Paste the client id and secret, then click **Connect Gmail**.
+5. Optionally narrow which emails it reads with a Gmail search, such as `to:ap@yourcompany.com` or `label:invoices`.
+
+**Outlook / Microsoft 365** (read-only, Microsoft Graph `Mail.Read`)
+1. Register an app in Microsoft Entra, with a *Web* redirect URI from Settings.
+2. Create a client secret.
+3. Add the delegated `Mail.Read` permission.
+4. Paste the ids, then click **Connect Outlook**. Tenant `common` works for both work and personal accounts.
+
+**A folder**
+- Enter a folder path, such as `C:\Users\you\Documents\Invoices` or `~/Invoices`.
+- Files are recognised by their content, so renaming or re-saving one won't process it twice.
+- Optionally, processed files can be moved into a `processed` subfolder.
+
+The same invoice arriving twice is caught twice over:
+- The intake skips files it has already seen.
+- The AP checks block duplicate vendor + invoice number combinations.
+
+If the AI or your ledger is unavailable, the invoice is retried on the next check, not lost. **Max invoices per check** (default 20) keeps AI costs predictable.
+
 ## Use it from Claude or ChatGPT (MCP connector)
 
 The same AP tools are exposed as an MCP server. The AI app reads the invoice in its own chat, then calls `search_vendors` → `list_accounts` → `check_invoice` → `propose_bill`. Bills still wait in Approvals.
@@ -70,9 +105,9 @@ Each method needs something different:
   3. Add the connector URL from Settings (`…/mcp/<secret>`) as a custom connector. Authentication: none, because the secret is in the URL.
 - **Claude Desktop:** this runs fully on your computer. Add it to `claude_desktop_config.json`:
   ```json
-  { "mcpServers": { "open-ap-agent": { "command": "node", "args": ["/full/path/to/open-ap-agent/src/mcp-stdio.js"] } } }
+  { "mcpServers": { "ai-ali": { "command": "node", "args": ["/full/path/to/ai-ali/src/mcp-stdio.js"] } } }
   ```
-- **Claude Code:** run `claude mcp add open-ap-agent -- node /full/path/to/open-ap-agent/src/mcp-stdio.js`.
+- **Claude Code:** run `claude mcp add ai-ali -- node /full/path/to/ai-ali/src/mcp-stdio.js`.
 
 Tools: `ap_summary`, `list_bills`, `search_vendors`, `list_accounts`, `list_purchase_orders`, `check_invoice`, `propose_bill`, `approval_queue`. A further tool, `approve_and_post`, appears only if you switch on *Let connected AI apps post bills themselves*. It is off by default.
 
@@ -84,6 +119,8 @@ Tools: `ap_summary`, `list_bills`, `search_vendors`, `list_accounts`, `list_purc
 - Data goes only to the provider it belongs to:
   - invoice files and questions → your chosen AI provider
   - ledger calls → Intuit or Xero
+  - mailbox reads → Google or Microsoft
+- Mailbox access is read-only: AI Ali never sends, moves or deletes email.
 - The web app listens on `127.0.0.1` by default. If you expose it (`HOST=0.0.0.0` or behind a proxy), set `APP_PASSWORD`. The connector URL contains a random secret: treat it like a password.
 - The AI can't post anything unless you turn that on. Even then, the checks run first, and blocked bills can't be posted.
 - OAuth uses a one-time `state` parameter, and tokens refresh automatically.
@@ -94,10 +131,11 @@ Tools: `ap_summary`, `list_bills`, `search_vendors`, `list_accounts`, `list_purc
 npm test
 ```
 
-27 offline tests cover:
+32 offline tests cover:
 - the AP controls
 - the full upload → AI → approval → posting flow against mock Claude and OpenAI APIs (PDF and image input, tool calling)
 - the QuickBooks and Xero connectors against mock APIs (OAuth exchange and refresh, queries, bill payloads, attachments)
+- Gmail, Outlook and folder intake against mock mail APIs, including retries and de-duplication
 - the MCP server over HTTP and stdio
 
 ## Project layout
@@ -108,6 +146,7 @@ src/agent.js          the AI loop (Claude or OpenAI) with tool calling
 src/tools.js          the AP tools shared by the chat and the connector
 src/checks.js         AP controls
 src/ap.js             summary, aging, approval queue, posting
+src/intake/           gmail.js, outlook.js, folder.js and the scheduler (index.js)
 src/ledger/           demo.js, qbo.js, xero.js
 src/llm/              anthropic.js, openai.js
 src/mcp.js            MCP server (JSON-RPC), mcp-stdio.js for local clients
@@ -119,7 +158,6 @@ samples/              fictional sample invoices
 
 - Credit notes
 - Bill payments and payment runs
-- Email inbox ingestion
 - Multi-company support
 - Approval limits by amount
 - Sage and NetSuite connectors

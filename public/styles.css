@@ -118,3 +118,11 @@ main{min-width:0}
   .q .lines table{min-width:560px}
   body{grid-template-columns:minmax(0,1fr)}.q .qb{grid-template-columns:minmax(0,1fr)}.q .fields{border-bottom:1px solid var(--line)}.q .lines{overflow-x:auto}.q .qh .amt{margin-left:0}
 }
+
+.srcs{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:14px}
+.src{border:1px solid var(--line);border-radius:12px;padding:12px 14px;font-size:13px}
+.src b{font-size:14.5px;display:flex;align-items:center;gap:6px}.src small{color:var(--muted);display:block;word-break:break-all}
+.src.err small.e{color:var(--red)}
+.srcbox{border:1px solid var(--line);border-radius:12px;padding:16px 18px;margin-bottom:14px}
+.srcbox h3{margin:0 0 8px;font-size:15px;display:flex;align-items:center;gap:8px}
+@media (max-width:900px){.srcs{grid-template-columns:1fr}}

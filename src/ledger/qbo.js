@@ -127,7 +127,7 @@ export const qbo = {
     const body = {
       VendorRef: { value: vendorId }, TxnDate: draft.date, DueDate: draft.dueDate, DocNumber: String(draft.number).slice(0, 21), Line: lines,
       ...(useCodes ? { GlobalTaxCalculation: 'TaxExcluded' } : {}),
-      PrivateNote: [draft.poNumber ? `PO ${draft.poNumber}` : '', 'Posted by Open AP Agent after approval'].filter(Boolean).join(' · ').slice(0, 4000),
+      PrivateNote: [draft.poNumber ? `PO ${draft.poNumber}` : '', 'Posted by AI Ali after approval'].filter(Boolean).join(' · ').slice(0, 4000),
     };
     const j = await call('POST', '/bill', body);
     const b = j.Bill;

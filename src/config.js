@@ -31,8 +31,11 @@ export const EDITABLE = [
   'QBO_CLIENT_ID', 'QBO_CLIENT_SECRET', 'QBO_ENVIRONMENT', 'QBO_DEFAULT_TAX_CODE',
   'XERO_CLIENT_ID', 'XERO_CLIENT_SECRET', 'XERO_BILL_STATUS',
   'ALLOW_AI_POSTING', 'PO_TOLERANCE_PCT', 'COMPANY_NAME',
+  'GMAIL_CLIENT_ID', 'GMAIL_CLIENT_SECRET', 'GMAIL_QUERY',
+  'OUTLOOK_CLIENT_ID', 'OUTLOOK_CLIENT_SECRET', 'OUTLOOK_TENANT', 'OUTLOOK_FOLDER',
+  'WATCH_FOLDER', 'MOVE_PROCESSED', 'INTAKE_ENABLED', 'INTAKE_INTERVAL_MIN', 'INTAKE_LOOKBACK_DAYS', 'INTAKE_MAX_PER_RUN',
 ];
-export const SECRET = new Set(['ANTHROPIC_API_KEY', 'OPENAI_API_KEY', 'QBO_CLIENT_SECRET', 'XERO_CLIENT_SECRET']);
+export const SECRET = new Set(['ANTHROPIC_API_KEY', 'OPENAI_API_KEY', 'QBO_CLIENT_SECRET', 'XERO_CLIENT_SECRET', 'GMAIL_CLIENT_SECRET', 'OUTLOOK_CLIENT_SECRET']);
 
 const DEFAULTS = {
   PORT: '8787',
@@ -45,6 +48,14 @@ const DEFAULTS = {
   XERO_BILL_STATUS: 'AUTHORISED', // AUTHORISED | DRAFT  (status the bill gets in Xero once you approve it here)
   ALLOW_AI_POSTING: 'false',      // let a connected AI app post bills itself (off: people approve in the web app)
   PO_TOLERANCE_PCT: '2',
+  GMAIL_QUERY: 'has:attachment (filename:pdf OR filename:png OR filename:jpg OR filename:jpeg) -in:sent -in:chats',
+  OUTLOOK_TENANT: 'common',       // common | consumers | organizations | your tenant id
+  OUTLOOK_FOLDER: 'inbox',
+  MOVE_PROCESSED: 'false',        // move picked-up files into a "processed" subfolder of the watched folder
+  INTAKE_ENABLED: 'true',         // check the connected sources on a timer
+  INTAKE_INTERVAL_MIN: '5',
+  INTAKE_LOOKBACK_DAYS: '3',      // on first connection, only look this far back
+  INTAKE_MAX_PER_RUN: '20',       // cap on invoices processed per check (keeps AI costs predictable)
 };
 
 function readSettings() {

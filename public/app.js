@@ -1,4 +1,4 @@
-// Open AP Agent web app. Plain JavaScript, no build step.
+// AI Ali web app. Plain JavaScript, no build step.
 const $ = (s, el = document) => el.querySelector(s);
 const $$ = (s, el = document) => [...el.querySelectorAll(s)];
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -59,7 +59,7 @@ const stepText = (ev) => {
 };
 
 // ---------------------------------------------------------------- navigation and status
-const VIEWS = { overview: loadOverview, inbox: () => {}, approvals: loadQueue, ask: () => {}, bills: loadBills, activity: loadAudit, settings: loadSettings };
+const VIEWS = { overview: loadOverview, inbox: loadIntake, approvals: loadQueue, ask: () => {}, bills: loadBills, activity: loadAudit, settings: loadSettings };
 function show() {
   const v = (location.hash || '#overview').slice(1).split('?')[0];
   const name = VIEWS[v] ? v : 'overview';
@@ -153,6 +153,31 @@ async function processOne(f) {
     $('.spin', el)?.remove(); top.textContent = ''; $('.answer', el).innerHTML = `<div class="notice">${esc(e.message)}</div>`;
   }
 }
+
+// ---------------------------------------------------------------- automatic intake
+const RESULT = { queued: ['pass', 'In approvals'], not_invoice: ['', 'Not an invoice'], not_queued: ['blocked', 'Not queued'], no_action: ['', 'No action'], already_seen: ['', 'Already seen'], error: ['blocked', 'Error'], warning: ['review', 'Warning'] };
+const ago = (iso) => { if (!iso) return 'never'; const m = Math.round((Date.now() - Date.parse(iso)) / 60000); return m < 1 ? 'just now' : m < 60 ? `${m} min ago` : m < 1440 ? `${Math.round(m / 60)} h ago` : iso.slice(0, 10); };
+async function loadIntake() {
+  const r = await api('/api/intake');
+  $('#intake-sources').innerHTML = Object.entries(r.sources).map(([k, s]) => `<div class="src ${s.lastError ? 'err' : ''}"><b><span class="dot ${s.connected && !s.lastError ? '' : 'off'}"></span>${esc(s.label)}</b>
+    ${s.connected ? `<small>${esc(s.account)}</small><small>Checked ${ago(s.lastCheck)} · ${s.processed} picked up</small>${s.lastError ? `<small class="e">${esc(s.lastError)}</small>` : ''}` : `<small>Not connected · <a href="#settings">set up</a></small>`}</div>`).join('');
+  $('#intake-run').disabled = r.running;
+  $('#intake-log').innerHTML = r.log.length ? `<table><tr><th>When</th><th>Source</th><th>File</th><th>From / subject</th><th>Result</th></tr>${r.log.slice(0, 25).map((l) => {
+    let [cls, label] = RESULT[l.result] || ['', l.result];
+    if (l.result === 'queued' && l.checks && l.checks !== 'pass') { cls = l.checks; label = l.checks === 'review' ? 'In approvals · review' : 'In approvals · blocked'; }
+    return `<tr><td>${ago(l.at)}</td><td>${esc(l.source)}</td><td>${esc(l.file || '')}</td><td class="muted">${esc(l.from || '')}${l.subject ? `<br>${esc(l.subject)}` : ''}</td><td><span class="pill ${cls}">${label}</span>${l.queueId ? ` <a href="#approvals">review</a>` : ''}${l.message && l.result !== 'queued' ? `<br><small class="muted">${esc(l.message.slice(0, 160))}</small>` : ''}</td></tr>`;
+  }).join('')}</table>` : '<div class="empty">Nothing picked up yet.</div>';
+}
+$('#intake-run').onclick = async () => {
+  if (!STATUS?.ai.ready) { toast('Add an AI API key in Settings first.', true); return; }
+  const b = $('#intake-run'); b.disabled = true; b.textContent = 'Checking…';
+  try {
+    const done = await streamPost('/api/intake/run', {}, (ev) => { if (ev.type === 'intake_file') b.textContent = `Reading ${ev.name}…`; });
+    const r = done.results || [];
+    toast(r.length ? r.map((x) => `${x.source}: ${x.error ? 'error' : `${x.processed} new, ${x.queued} queued`}`).join(' · ') : 'No sources connected.', r.some((x) => x.error));
+  } catch (e) { toast(e.message, true); }
+  b.textContent = 'Check now'; await loadIntake(); refreshStatus();
+};
 
 // ---------------------------------------------------------------- approvals
 let qFilter = 'pending', LOOK = null;
@@ -261,7 +286,9 @@ async function loadSettings() {
   $$('input[name="AI_PROVIDER"]').forEach((r) => (r.checked = r.value === s.AI_PROVIDER));
   $('[name="PO_TOLERANCE_PCT"]').value = s.PO_TOLERANCE_PCT; $('[name="COMPANY_NAME"]').value = s.COMPANY_NAME || '';
   $('[name="ALLOW_AI_POSTING"]').checked = /^(1|true|yes|on)$/i.test(s.ALLOW_AI_POSTING);
-  renderLedger(s, st); renderAI(s); renderConnector(st);
+  $('[name="INTAKE_INTERVAL_MIN"]').value = s.INTAKE_INTERVAL_MIN; $('[name="INTAKE_MAX_PER_RUN"]').value = s.INTAKE_MAX_PER_RUN;
+  $('[name="INTAKE_ENABLED"]').checked = /^(1|true|yes|on)$/i.test(s.INTAKE_ENABLED);
+  renderLedger(s, st); renderAI(s); renderSources(s, st); renderConnector(st);
 }
 function renderLedger(s, st) {
   const L = s.LEDGER, el = $('#ledger-detail');
@@ -297,6 +324,40 @@ function renderAI(s) {
     <label>Model<input name="${k}_MODEL" value="${esc(s[k + '_MODEL'])}"><small>Any model that supports tools and PDF input.</small></label>
     <div class="wide"><button class="btn" data-save-ai>Save AI settings</button></div>`;
 }
+function renderSources(s, st) {
+  const I = st.intake, src = I.sources;
+  const line = (k) => `<span class="dot ${src[k].connected && !src[k].lastError ? '' : 'off'}"></span>`;
+  const copy = (u) => `<div class="copy"><code>${esc(u)}</code><button class="btn ghost sm" data-copy="${esc(u)}">Copy</button></div>`;
+  $('#sources-detail').innerHTML = `
+  <div class="srcbox"><h3>${line('gmail')}Gmail ${src.gmail.connected ? `<small class="muted">· ${esc(src.gmail.account)}</small>` : ''}</h3>
+    <div class="steps-box"><ol>
+      <li>In <a href="https://console.cloud.google.com/apis/library/gmail.googleapis.com" target="_blank" rel="noopener">Google Cloud console</a>, enable the <b>Gmail API</b>.</li>
+      <li>Create an OAuth client (type <b>Web application</b>) with this redirect URI:${copy(I.gmailRedirect)}</li>
+      <li>On the consent screen, choose <b>Internal</b> if you use Google Workspace. For a personal Gmail, set it to <b>In production</b>: in Testing mode Google ends the access every 7 days.</li>
+      <li>Paste the client id and secret, save, then Connect. Access is read-only (<code>gmail.readonly</code>).</li></ol></div>
+    <div class="form"><label>Client ID<input name="GMAIL_CLIENT_ID" value="${esc(s.GMAIL_CLIENT_ID || '')}"></label>
+      <label>Client secret<input name="GMAIL_CLIENT_SECRET" type="password" placeholder="${s.GMAIL_CLIENT_SECRET ? esc(s.GMAIL_CLIENT_SECRET) + ' (saved)' : ''}"></label>
+      <label class="wide">Which emails (Gmail search)<input name="GMAIL_QUERY" value="${esc(s.GMAIL_QUERY || '')}"><small>For example add <code>to:ap@yourcompany.com</code> or <code>label:invoices</code> to narrow it down.</small></label></div>
+    <button class="btn ghost" data-save-src>Save</button> <a class="btn" href="/oauth/gmail/start" ${I.gmailReady ? '' : 'style="opacity:.5;pointer-events:none"'}>${src.gmail.connected ? 'Reconnect' : 'Connect'} Gmail</a>${src.gmail.connected ? ' <button class="btn danger" data-disconnect="gmail">Disconnect</button>' : ''}
+  </div>
+  <div class="srcbox"><h3>${line('outlook')}Outlook / Microsoft 365 ${src.outlook.connected ? `<small class="muted">· ${esc(src.outlook.account)}</small>` : ''}</h3>
+    <div class="steps-box"><ol>
+      <li>In <a href="https://entra.microsoft.com/#view/Microsoft_AAD_RegisteredApps/ApplicationsListBlade" target="_blank" rel="noopener">Microsoft Entra → App registrations</a>, create a new registration. Pick the account types you need (work, personal, or both) and add a <b>Web</b> redirect URI:${copy(I.outlookRedirect)}</li>
+      <li>Under Certificates &amp; secrets, create a client secret. Under API permissions, add Microsoft Graph delegated <b>Mail.Read</b>.</li>
+      <li>Paste the application (client) id and secret, save, then Connect.</li></ol></div>
+    <div class="form"><label>Application (client) ID<input name="OUTLOOK_CLIENT_ID" value="${esc(s.OUTLOOK_CLIENT_ID || '')}"></label>
+      <label>Client secret<input name="OUTLOOK_CLIENT_SECRET" type="password" placeholder="${s.OUTLOOK_CLIENT_SECRET ? esc(s.OUTLOOK_CLIENT_SECRET) + ' (saved)' : ''}"></label>
+      <label>Tenant<input name="OUTLOOK_TENANT" value="${esc(s.OUTLOOK_TENANT || 'common')}"><small><code>common</code> for work and personal accounts, or your tenant id.</small></label>
+      <label>Mail folder<input name="OUTLOOK_FOLDER" value="${esc(s.OUTLOOK_FOLDER || 'inbox')}"><small><code>inbox</code>, or a folder id.</small></label></div>
+    <button class="btn ghost" data-save-src>Save</button> <a class="btn" href="/oauth/outlook/start" ${I.outlookReady ? '' : 'style="opacity:.5;pointer-events:none"'}>${src.outlook.connected ? 'Reconnect' : 'Connect'} Outlook</a>${src.outlook.connected ? ' <button class="btn danger" data-disconnect="outlook">Disconnect</button>' : ''}
+  </div>
+  <div class="srcbox"><h3>${line('folder')}Folder on this computer</h3>
+    <p class="muted">Any PDF or image saved in this folder is picked up, including scanner output or a synced OneDrive, Google Drive or Dropbox folder. Files are recognised by their content, so renaming one won't process it twice.</p>
+    <div class="form"><label class="wide">Folder path<input name="WATCH_FOLDER" value="${esc(s.WATCH_FOLDER || '')}" placeholder="C:\\Users\\you\\Documents\\Invoices   or   ~/Invoices"></label>
+      <label class="check"><input type="checkbox" name="MOVE_PROCESSED" ${/^(1|true|yes|on)$/i.test(s.MOVE_PROCESSED) ? 'checked' : ''}><span>Move picked-up files into a "processed" subfolder</span></label></div>
+    <button class="btn ghost" data-save-src>Save</button>${src.folder.lastError ? ` <span class="pill blocked">${esc(src.folder.lastError)}</span>` : ''}
+  </div>`;
+}
 function renderConnector(st) {
   const url = st.connector.url;
   $('#connector').innerHTML = `
@@ -305,14 +366,15 @@ function renderConnector(st) {
     ${st.connector.local ? `<div class="notice">Claude.ai and ChatGPT need an HTTPS address they can reach. Deploy this app, or run a tunnel (for example <code>cloudflared tunnel --url ${esc(location.origin)}</code>) and set <code>PUBLIC_URL</code> in .env. For Claude Desktop or Claude Code, the local option below works without any of that.</div>` : ''}
     <div class="steps-box"><b>Claude (claude.ai or desktop)</b><ol><li>Settings → Connectors → Add custom connector.</li><li>Paste the connector URL. No sign-in is needed: the secret is in the URL.</li></ol></div>
     <div class="steps-box"><b>ChatGPT</b><ol><li>Turn on Developer mode (Settings → Apps &amp; Connectors → Advanced settings).</li><li>Create a custom connector, paste the URL, authentication: none.</li></ol></div>
-    <div class="steps-box"><b>Claude Desktop or Claude Code, fully local</b> (no URL, runs on this computer)<pre class="code">${esc(JSON.stringify({ mcpServers: { 'open-ap-agent': { command: 'node', args: ['/full/path/to/open-ap-agent/src/mcp-stdio.js'] } } }, null, 2))}</pre>Claude Code: <code>claude mcp add open-ap-agent -- node /full/path/to/open-ap-agent/src/mcp-stdio.js</code></div>
+    <div class="steps-box"><b>Claude Desktop or Claude Code, fully local</b> (no URL, runs on this computer)<pre class="code">${esc(JSON.stringify({ mcpServers: { 'ai-ali': { command: 'node', args: ['/full/path/to/ai-ali/src/mcp-stdio.js'] } } }, null, 2))}</pre>Claude Code: <code>claude mcp add ai-ali -- node /full/path/to/ai-ali/src/mcp-stdio.js</code></div>
     <p class="muted" style="margin:0">Tools: ${st.connector.tools.map((t) => `<code>${t}</code>`).join(' ')}</p>`;
 }
 document.addEventListener('click', async (e) => {
   const c = e.target.closest('[data-copy]'); if (c) { await navigator.clipboard.writeText(c.dataset.copy).catch(() => {}); toast('Copied.'); return; }
   const card = e.target.closest('.card');
-  if (e.target.closest('[data-save-ledger]') || e.target.closest('[data-save-ai]')) {
-    const body = {}; $$('input[name],select[name]', card).forEach((i) => { if (i.type === 'radio') { if (i.checked) body[i.name] = i.value; } else if (i.type === 'password') { if (i.value) body[i.name] = i.value; } else body[i.name] = i.value; });
+  if (e.target.closest('[data-save-ledger]') || e.target.closest('[data-save-ai]') || e.target.closest('[data-save-src]')) {
+    const scope = e.target.closest('.srcbox') || card;
+    const body = {}; $$('input[name],select[name]', scope).forEach((i) => { if (i.type === 'radio') { if (i.checked) body[i.name] = i.value; } else if (i.type === 'checkbox') body[i.name] = i.checked ? 'true' : 'false'; else if (i.type === 'password') { if (i.value) body[i.name] = i.value; } else body[i.name] = i.value; });
     try { await post('/api/settings', body); toast('Saved.'); LOOK = null; loadSettings(); } catch (err) { toast(err.message, true); }
   }
   const d = e.target.closest('[data-disconnect]');
@@ -321,7 +383,8 @@ document.addEventListener('click', async (e) => {
 $('#ledger-opts').onchange = async (e) => { await post('/api/settings', { LEDGER: e.target.value }); LOOK = null; toast('Ledger switched.'); loadSettings(); };
 $('#ai-opts').onchange = async (e) => { await post('/api/settings', { AI_PROVIDER: e.target.value }); sessionId = null; loadSettings(); };
 $('#save-controls').onclick = async () => {
-  await post('/api/settings', { PO_TOLERANCE_PCT: $('[name="PO_TOLERANCE_PCT"]').value, COMPANY_NAME: $('[name="COMPANY_NAME"]').value, ALLOW_AI_POSTING: $('[name="ALLOW_AI_POSTING"]').checked ? 'true' : 'false' });
+  await post('/api/settings', { PO_TOLERANCE_PCT: $('[name="PO_TOLERANCE_PCT"]').value, COMPANY_NAME: $('[name="COMPANY_NAME"]').value, ALLOW_AI_POSTING: $('[name="ALLOW_AI_POSTING"]').checked ? 'true' : 'false',
+    INTAKE_INTERVAL_MIN: $('[name="INTAKE_INTERVAL_MIN"]').value, INTAKE_MAX_PER_RUN: $('[name="INTAKE_MAX_PER_RUN"]').value, INTAKE_ENABLED: $('[name="INTAKE_ENABLED"]').checked ? 'true' : 'false' });
   toast('Controls saved.'); loadSettings();
 };
 $('#reset-demo').onclick = async () => { if (!confirm('Reset the demo ledger? Bills you posted to it will be removed.')) return; await post('/api/demo/reset'); LOOK = null; toast('Demo ledger reset.'); };

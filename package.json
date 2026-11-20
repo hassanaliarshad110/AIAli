@@ -1,12 +1,12 @@
 {
-  "name": "open-ap-agent",
+  "name": "ai-ali",
   "version": "0.1.0",
   "description": "Open-source AI accounts payable agent. Bring your own Claude or OpenAI key, connect QuickBooks Online or Xero, read invoices, check them, and post bills after human approval.",
   "type": "module",
   "license": "MIT",
   "author": "Hassan Ali",
   "engines": { "node": ">=20" },
-  "bin": { "open-ap-agent": "src/server.js", "open-ap-agent-mcp": "src/mcp-stdio.js" },
+  "bin": { "ai-ali": "src/server.js", "ai-ali-mcp": "src/mcp-stdio.js" },
   "scripts": {
     "start": "node src/server.js",
     "mcp": "node src/mcp-stdio.js",

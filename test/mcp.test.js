@@ -17,7 +17,7 @@ test('wrong token is a 404', async () => {
 test('initialize, list tools, call tools', async () => {
   const init = await (await rpc({ jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 't', version: '1' } } })).json();
   assert.equal(init.result.protocolVersion, '2025-06-18');
-  assert.equal(init.result.serverInfo.name, 'open-ap-agent');
+  assert.equal(init.result.serverInfo.name, 'ai-ali');
   assert.equal((await rpc({ jsonrpc: '2.0', method: 'notifications/initialized' })).status, 202);
   const list = await (await rpc({ jsonrpc: '2.0', id: 2, method: 'tools/list' })).json();
   const names = list.result.tools.map((t) => t.name);

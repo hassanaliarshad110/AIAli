@@ -27,6 +27,7 @@ export const EXTRACT = {
 
 // Decide the next "model" action from the conversation so far. Same script for both providers.
 function plan(allText, toolResults) {
+  if (allText.includes('newsletter')) return { text: 'NOT AN INVOICE: this is a marketing newsletter.' };
   const file = Object.keys(EXTRACT).find((f) => allText.includes(f));
   const n = toolResults.length;
   if (file) {
@@ -139,5 +140,42 @@ export function xeroMock(log = []) {
     }
     if (/^\/Invoices\/[\w-]+\/Attachments\//.test(p) && req.method === 'PUT') return { json: { Attachments: [{ AttachmentID: 'a-1' }] } };
     return { status: 404, json: { Message: 'nope ' + p } };
+  });
+}
+
+// --- Gmail API (gmail.readonly) and Microsoft Graph mail
+const b64url = (buf) => Buffer.from(buf).toString('base64url');
+export function gmailMock(files, log = []) {
+  // files: [{ id, name, type, data, from, subject, inline }]
+  return serve(({ req, url }) => {
+    log.push({ path: url.pathname, search: url.search, auth: req.headers.authorization });
+    if (url.pathname === '/token') return { json: { access_token: 'g-at', refresh_token: 'g-rt', expires_in: 3600 } };
+    if (!String(req.headers.authorization).startsWith('Bearer g-at')) return { status: 401, json: { error: { message: 'unauth' } } };
+    const p = url.pathname.replace('/gmail/v1/users/me', '');
+    if (p === '/profile') return { json: { emailAddress: 'ap@maple.example' } };
+    if (p === '/messages') return { json: { messages: files.map((f) => ({ id: f.id })) } };
+    let m = p.match(/^\/messages\/([\w-]+)$/);
+    if (m) {
+      const f = files.find((x) => x.id === m[1]);
+      return { json: { id: f.id, internalDate: String(Date.now()), payload: { mimeType: 'multipart/mixed', headers: [{ name: 'From', value: f.from }, { name: 'Subject', value: f.subject }], parts: [
+        { mimeType: 'text/plain', filename: '', body: { size: 10, data: b64url('hello') } },
+        { mimeType: f.type, filename: f.name, headers: [{ name: 'Content-Disposition', value: `${f.inline ? 'inline' : 'attachment'}; filename="${f.name}"` }], body: { attachmentId: `att-${f.id}`, size: f.data.length } },
+      ] } } };
+    }
+    m = p.match(/^\/messages\/([\w-]+)\/attachments\/att-([\w-]+)$/);
+    if (m) { const f = files.find((x) => x.id === m[2]); return { json: { size: f.data.length, data: b64url(f.data) } }; }
+    return { status: 404, json: { error: { message: 'nope' } } };
+  });
+}
+export function graphMock(files, log = []) {
+  return serve(({ req, url }) => {
+    log.push({ path: url.pathname, search: decodeURIComponent(url.search), auth: req.headers.authorization });
+    if (/\/oauth2\/v2.0\/token$/.test(url.pathname)) return { json: { access_token: 'o-at', refresh_token: 'o-rt', expires_in: 3600 } };
+    if (req.headers.authorization !== 'Bearer o-at') return { status: 401, json: { error: { message: 'unauth' } } };
+    if (url.pathname === '/v1.0/me') return { json: { mail: 'ap@maple.example' } };
+    if (url.pathname === '/v1.0/me/mailFolders/inbox/messages') return { json: { value: files.map((f) => ({ id: f.id, subject: f.subject, receivedDateTime: new Date().toISOString(), from: { emailAddress: { name: 'Vendor', address: f.from } } })) } };
+    const m = url.pathname.match(/^\/v1.0\/me\/messages\/([\w-]+)\/attachments$/);
+    if (m) { const f = files.find((x) => x.id === m[1]); return { json: { value: [{ '@odata.type': '#microsoft.graph.fileAttachment', id: 'a1', name: f.name, contentType: f.type, size: f.data.length, isInline: !!f.inline, contentBytes: Buffer.from(f.data).toString('base64') }] } }; }
+    return { status: 404, json: { error: { message: 'nope ' + url.pathname } } };
   });
 }

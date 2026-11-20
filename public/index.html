@@ -3,13 +3,13 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Open AP Agent</title>
+<title>AI Ali</title>
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="styles.css">
 </head>
 <body>
 <aside class="side">
-  <div class="brand"><img src="icon.svg" alt=""><div><b>Open AP Agent</b><small id="company">Loading…</small></div></div>
+  <div class="brand"><img src="icon.svg" alt=""><div><b>AI Ali</b><small id="company">Loading…</small></div></div>
   <nav>
     <a href="#overview" data-v="overview"><svg viewBox="0 0 24 24"><path d="M4 13h6V4H4zm0 7h6v-5H4zm10 0h6v-9h-6zm0-16v5h6V4z"/></svg>Overview</a>
     <a href="#inbox" data-v="inbox"><svg viewBox="0 0 24 24"><path d="M4 4h16v10h-4l-2 3h-4l-2-3H4zm0 12h4l2 3h4l2-3h4v4H4z"/></svg>Inbox</a>
@@ -37,7 +37,13 @@
 
   <!-- INBOX -->
   <section id="v-inbox" class="view">
-    <header><h1>Inbox</h1><p class="sub">Drop invoices here. The agent reads each one, codes it, runs the checks and puts it in Approvals. Nothing is posted until a person approves it.</p></header>
+    <header><h1>Inbox</h1><p class="sub">Invoices arrive by email or in a folder automatically, or you can drop them here. Each one is read, coded and checked, then waits in Approvals. Nothing is posted until a person approves it.</p></header>
+    <div class="card" id="intake-card">
+      <div class="row-h"><h2>Automatic intake</h2><button class="btn sm" id="intake-run">Check now</button></div>
+      <div class="srcs" id="intake-sources"></div>
+      <div id="intake-log"></div>
+    </div>
+    <h2 style="margin:26px 0 12px">Upload manually</h2>
     <label class="drop" id="drop">
       <input type="file" id="file" multiple accept="application/pdf,image/png,image/jpeg,image/webp">
       <svg viewBox="0 0 24 24"><path d="M12 3 7 8h3v6h4V8h3zM5 17h14v3H5z"/></svg>
@@ -96,16 +102,24 @@
       <div class="form" id="ai-form"></div>
     </div>
     <div class="card">
-      <h2>3 · Controls</h2>
+      <h2>3 · Where invoices come from</h2>
+      <p class="muted">Connect an AP mailbox or a folder. New PDF and image attachments are picked up every few minutes and processed like uploads. The mailbox is read-only: nothing is sent, moved or deleted.</p>
+      <div id="sources-detail"></div>
+    </div>
+    <div class="card">
+      <h2>4 · Controls</h2>
       <div class="form">
         <label>PO tolerance (%)<input name="PO_TOLERANCE_PCT" type="number" min="0" step="0.5"><small>Invoices within this % of their PO pass the PO check.</small></label>
         <label>Company name (optional)<input name="COMPANY_NAME" placeholder="Shown in the sidebar and given to the AI"></label>
+        <label>Check sources every (minutes)<input name="INTAKE_INTERVAL_MIN" type="number" min="1"></label>
+        <label>Max invoices per check<input name="INTAKE_MAX_PER_RUN" type="number" min="1"><small>Keeps AI costs predictable. The rest wait for the next check.</small></label>
+        <label class="check"><input type="checkbox" name="INTAKE_ENABLED"><span>Check connected mailboxes and folders automatically<small>Off: they are only checked when you click "Check now".</small></span></label>
         <label class="check"><input type="checkbox" name="ALLOW_AI_POSTING"><span>Let connected AI apps post bills themselves<small>Off by default: AI apps can only propose, and people approve here.</small></span></label>
       </div>
       <button class="btn" id="save-controls">Save controls</button>
     </div>
     <div class="card">
-      <h2>4 · Use it from Claude or ChatGPT</h2>
+      <h2>5 · Use it from Claude or ChatGPT</h2>
       <p class="muted">The same AP tools are available as a connector (MCP server), so you can work from Claude or ChatGPT instead of this screen. The AI app reads invoices itself; bills still land in Approvals.</p>
       <div id="connector"></div>
     </div>

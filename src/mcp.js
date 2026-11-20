@@ -5,7 +5,7 @@ import { toolList, runTool } from './tools.js';
 const VERSIONS = ['2025-11-25', '2025-06-18', '2025-03-26', '2024-11-05'];
 const INSTRUCTIONS = `Accounts payable tools for the company's ledger (QuickBooks Online, Xero or the demo ledger).
 When the user shares an invoice (PDF or image), read it yourself, then: search_vendors, list_accounts, check_invoice, propose_bill.
-propose_bill only queues the bill: a person approves it in the Open AP Agent web app before anything is posted.
+propose_bill only queues the bill: a person approves it in the AI Ali web app before anything is posted.
 For questions about what is owed, due or overdue use ap_summary and list_bills; never guess figures.`;
 
 async function handle(msg, ctx) {
@@ -19,7 +19,7 @@ async function handle(msg, ctx) {
       return ok({
         protocolVersion: VERSIONS.includes(params.protocolVersion) ? params.protocolVersion : VERSIONS[0],
         capabilities: { tools: { listChanged: false } },
-        serverInfo: { name: 'open-ap-agent', title: 'Open AP Agent', version: '0.1.0' },
+        serverInfo: { name: 'ai-ali', title: 'AI Ali', version: '0.1.0' },
         instructions: INSTRUCTIONS,
       });
     case 'ping': return ok({});

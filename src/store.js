@@ -16,6 +16,7 @@ function load() {
   state.tokens ??= {};
   state.audit ??= [];
   state.files ??= {};
+  state.intake ??= { seen: {}, log: [], sources: {} };
   return state;
 }
 function persist() {
@@ -73,5 +74,17 @@ export function setTokens(ledger, t) {
   if (t == null) delete load().tokens[ledger]; else load().tokens[ledger] = { ...(load().tokens[ledger] || {}), ...t };
   persist();
 }
+
+// ---- automatic intake (email inboxes and folders): what has been picked up, and a log of every attempt
+export const intakeSeen = (key) => !!load().intake.seen[key];
+export function intakeMarkSeen(key) { load().intake.seen[key] = now(); persist(); }
+export function intakeLog(entry) {
+  load().intake.log.unshift({ at: now(), ...entry });
+  state.intake.log = state.intake.log.slice(0, 500);
+  persist();
+}
+export const intakeLogs = (n = 100) => load().intake.log.slice(0, n);
+export const intakeSource = (k) => load().intake.sources[k] || {};
+export function setIntakeSource(k, patch) { load().intake.sources[k] = { ...(state.intake.sources[k] || {}), ...patch }; persist(); }
 
 export function resetForTests() { state = null; }
