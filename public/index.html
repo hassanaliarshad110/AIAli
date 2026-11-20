@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Open AP Agent</title>
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<aside class="side">
+  <div class="brand"><img src="icon.svg" alt=""><div><b>Open AP Agent</b><small id="company">Loading…</small></div></div>
+  <nav>
+    <a href="#overview" data-v="overview"><svg viewBox="0 0 24 24"><path d="M4 13h6V4H4zm0 7h6v-5H4zm10 0h6v-9h-6zm0-16v5h6V4z"/></svg>Overview</a>
+    <a href="#inbox" data-v="inbox"><svg viewBox="0 0 24 24"><path d="M4 4h16v10h-4l-2 3h-4l-2-3H4zm0 12h4l2 3h4l2-3h4v4H4z"/></svg>Inbox</a>
+    <a href="#approvals" data-v="approvals"><svg viewBox="0 0 24 24"><path d="M9 16.2 4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4z"/></svg>Approvals <em id="pending-badge" hidden></em></a>
+    <a href="#ask" data-v="ask"><svg viewBox="0 0 24 24"><path d="M4 4h16v12H7l-3 3zm4 5h8v2H8zm0-3h8v2H8z"/></svg>Ask</a>
+    <a href="#bills" data-v="bills"><svg viewBox="0 0 24 24"><path d="M6 2h9l5 5v15H6zm8 1.5V8h4.5zM8 12h8v2H8zm0 4h8v2H8z"/></svg>Bills</a>
+    <a href="#activity" data-v="activity"><svg viewBox="0 0 24 24"><path d="M13 3a9 9 0 1 0 9 9h-2a7 7 0 1 1-7-7zm-1 4v6l5 3 1-1.7-4-2.3V7z"/></svg>Activity</a>
+    <a href="#settings" data-v="settings"><svg viewBox="0 0 24 24"><path d="M19.4 13a7.5 7.5 0 0 0 0-2l2.1-1.6-2-3.5-2.5 1a7 7 0 0 0-1.7-1L15 3h-4l-.4 2.8a7 7 0 0 0-1.7 1l-2.5-1-2 3.5L6.6 11a7.5 7.5 0 0 0 0 2l-2.1 1.6 2 3.5 2.5-1a7 7 0 0 0 1.7 1L11 21h4l.4-2.8a7 7 0 0 0 1.7-1l2.5 1 2-3.5zM13 15.5a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7z"/></svg>Settings</a>
+  </nav>
+  <div class="conn" id="conn"></div>
+  <footer>Open source · MIT<br>by Hassan Ali</footer>
+</aside>
+
+<main>
+  <!-- OVERVIEW -->
+  <section id="v-overview" class="view">
+    <header><h1>Payables overview</h1><p class="sub" id="asof"></p></header>
+    <div class="kpis" id="kpis"></div>
+    <div class="grid2">
+      <div class="card"><h2>Aging</h2><div id="aging"></div></div>
+      <div class="card"><h2>Largest balances</h2><div id="topv"></div></div>
+    </div>
+    <div class="card"><div class="row-h"><h2>Overdue and due in the next 14 days</h2><a href="#bills" class="link">All bills →</a></div><div id="soon"></div></div>
+  </section>
+
+  <!-- INBOX -->
+  <section id="v-inbox" class="view">
+    <header><h1>Inbox</h1><p class="sub">Drop invoices here. The agent reads each one, codes it, runs the checks and puts it in Approvals. Nothing is posted until a person approves it.</p></header>
+    <label class="drop" id="drop">
+      <input type="file" id="file" multiple accept="application/pdf,image/png,image/jpeg,image/webp">
+      <svg viewBox="0 0 24 24"><path d="M12 3 7 8h3v6h4V8h3zM5 17h14v3H5z"/></svg>
+      <b>Drop PDF or image invoices</b><span>or click to choose files</span>
+    </label>
+    <div class="samples"><span>No invoices handy? Try a sample:</span><div id="sample-btns"></div></div>
+    <div id="runs"></div>
+  </section>
+
+  <!-- APPROVALS -->
+  <section id="v-approvals" class="view">
+    <header class="row-h"><div><h1>Approvals</h1><p class="sub">Review what the agent proposed. Edit anything, then approve to post it to your ledger.</p></div>
+      <div class="seg" id="qfilter"><button data-s="pending" class="on">Pending</button><button data-s="posted">Posted</button><button data-s="rejected">Rejected</button><button data-s="all">All</button></div></header>
+    <div id="queue"></div>
+  </section>
+
+  <!-- ASK -->
+  <section id="v-ask" class="view">
+    <header><h1>Ask your payables</h1><p class="sub">Answers come from your ledger through tools, not from guesses. Every tool call is shown.</p></header>
+    <div class="chat" id="chat"></div>
+    <div class="chips" id="chips"></div>
+    <form class="composer" id="composer"><textarea id="msg" rows="1" placeholder="e.g. What do we owe Peak IT Services, and what's overdue?"></textarea><button class="btn">Send</button></form>
+  </section>
+
+  <!-- BILLS -->
+  <section id="v-bills" class="view">
+    <header class="row-h"><div><h1>Bills</h1><p class="sub" id="bills-sub"></p></div>
+      <div class="seg" id="bfilter"><button data-s="open" class="on">Open</button><button data-s="overdue">Overdue</button><button data-s="due_soon">Due soon</button><button data-s="all">All</button></div></header>
+    <div class="card"><div id="bills"></div></div>
+  </section>
+
+  <!-- ACTIVITY -->
+  <section id="v-activity" class="view">
+    <header><h1>Activity</h1><p class="sub">Audit trail: every proposal, edit, approval, rejection and posting, and who did it.</p></header>
+    <div class="card"><div id="audit"></div></div>
+  </section>
+
+  <!-- SETTINGS -->
+  <section id="v-settings" class="view">
+    <header><h1>Settings</h1><p class="sub">Keys and tokens stay on this machine, in the data folder. They are only ever sent to the service they belong to.</p></header>
+    <div class="card">
+      <h2>1 · Accounting system</h2>
+      <div class="opts" id="ledger-opts">
+        <label><input type="radio" name="LEDGER" value="demo"><span><b>Demo ledger</b><small>Fictional company with vendors, bills and POs. Try everything safely.</small></span></label>
+        <label><input type="radio" name="LEDGER" value="qbo"><span><b>QuickBooks Online</b><small>Sandbox or production company.</small></span></label>
+        <label><input type="radio" name="LEDGER" value="xero"><span><b>Xero</b><small>Demo company or your organisation.</small></span></label>
+      </div>
+      <div id="ledger-detail"></div>
+    </div>
+    <div class="card">
+      <h2>2 · AI model</h2>
+      <div class="opts small" id="ai-opts">
+        <label><input type="radio" name="AI_PROVIDER" value="anthropic"><span><b>Claude</b><small>Anthropic API key</small></span></label>
+        <label><input type="radio" name="AI_PROVIDER" value="openai"><span><b>OpenAI</b><small>OpenAI API key</small></span></label>
+      </div>
+      <div class="form" id="ai-form"></div>
+    </div>
+    <div class="card">
+      <h2>3 · Controls</h2>
+      <div class="form">
+        <label>PO tolerance (%)<input name="PO_TOLERANCE_PCT" type="number" min="0" step="0.5"><small>Invoices within this % of their PO pass the PO check.</small></label>
+        <label>Company name (optional)<input name="COMPANY_NAME" placeholder="Shown in the sidebar and given to the AI"></label>
+        <label class="check"><input type="checkbox" name="ALLOW_AI_POSTING"><span>Let connected AI apps post bills themselves<small>Off by default: AI apps can only propose, and people approve here.</small></span></label>
+      </div>
+      <button class="btn" id="save-controls">Save controls</button>
+    </div>
+    <div class="card">
+      <h2>4 · Use it from Claude or ChatGPT</h2>
+      <p class="muted">The same AP tools are available as a connector (MCP server), so you can work from Claude or ChatGPT instead of this screen. The AI app reads invoices itself; bills still land in Approvals.</p>
+      <div id="connector"></div>
+    </div>
+    <div class="card"><h2>Demo data</h2><p class="muted">Restore the demo ledger to its starting state.</p><button class="btn ghost" id="reset-demo">Reset demo ledger</button></div>
+  </section>
+</main>
+<div id="toast"></div>
+<script type="module" src="app.js"></script>
+</body>
+</html>
