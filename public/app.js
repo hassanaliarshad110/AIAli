@@ -28,6 +28,9 @@ async function streamPost(path, body, onEvent) {
   return last;
 }
 
+// One-line plain text from an AI answer, for table cells: drops **bold** and `code` markers and joins lines.
+const plain = (text) => String(text || '').replace(/\*\*|`/g, '').replace(/\s*\n+\s*/g, ' ').trim();
+
 // Minimal markdown for chat answers: paragraphs, **bold**, `code`, lists, tables.
 function md(text) {
   const inline = (s) => esc(s).replace(/\*\*(.+?)\*\*/g, '<b>$1</b>').replace(/`([^`]+)`/g, '<code>$1</code>');
@@ -165,7 +168,7 @@ async function loadIntake() {
   $('#intake-log').innerHTML = r.log.length ? `<table><tr><th>When</th><th>Source</th><th>File</th><th>From / subject</th><th>Result</th></tr>${r.log.slice(0, 25).map((l) => {
     let [cls, label] = RESULT[l.result] || ['', l.result];
     if (l.result === 'queued' && l.checks && l.checks !== 'pass') { cls = l.checks; label = l.checks === 'review' ? 'In approvals · review' : 'In approvals · blocked'; }
-    return `<tr><td>${ago(l.at)}</td><td>${esc(l.source)}</td><td>${esc(l.file || '')}</td><td class="muted">${esc(l.from || '')}${l.subject ? `<br>${esc(l.subject)}` : ''}</td><td><span class="pill ${cls}">${label}</span>${l.queueId ? ` <a href="#approvals">review</a>` : ''}${l.message && l.result !== 'queued' ? `<br><small class="muted">${esc(l.message.slice(0, 160))}</small>` : ''}</td></tr>`;
+    return `<tr><td>${ago(l.at)}</td><td>${esc(l.source)}</td><td>${esc(l.file || '')}</td><td class="muted">${esc(l.from || '')}${l.subject ? `<br>${esc(l.subject)}` : ''}</td><td><span class="pill ${cls}">${label}</span>${l.queueId ? ` <a href="#approvals">review</a>` : ''}${l.message && l.result !== 'queued' ? `<br><small class="muted">${esc(plain(l.message).slice(0, 160))}</small>` : ''}</td></tr>`;
   }).join('')}</table>` : '<div class="empty">Nothing picked up yet.</div>';
 }
 $('#intake-run').onclick = async () => {
